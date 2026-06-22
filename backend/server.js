@@ -72,9 +72,13 @@ app.post('/api/chat', async (req, res) => {
 
     // 设置 SSE (Server-Sent Events) 响应头
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders(); // ⬅️ 新增：强制立即发送响应头，防止 Railway 网关缓冲流式数据
+    res.setHeader('X-Accel-Buffering', 'no'); // 强制禁用 Nginx 缓冲
+    res.flushHeaders(); // 立即发送响应头
+
+    // 🚨 关键补丁：发送一个 SSE 注释作为“心跳包”，立刻打破 Railway 网关的缓冲等待！
+    res.write(': heartbeat\n\n'); 
 
     // 将 Dify 的流式数据块实时透传给前端
     const reader = llmResponse.body.getReader();
