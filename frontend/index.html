@@ -295,13 +295,20 @@
       // ⚠️ 请确保这里替换为您真实的 Railway 后端 URL
       const BACKEND_URL = 'https://ontoai-project-production.up.railway.app'; 
       
-      const response = await fetch(`${BACKEND_URL}/api/chat`, {
+       const response = await fetch(`${BACKEND_URL}/api/chat`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMessage, conversation_id: conversationId, app_type: appType, system_prompt: currentAgentDescription })
       });
       
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const reader = response.body.getReader(); const decoder = new TextDecoder();
+      // ⬇️ 增强错误处理：如果状态码不是 200，尝试读取 Dify 返回的具体错误原因
+      if (!response.ok) {
+        let errorMsg = `HTTP ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.message || errorData.details || errorMsg;
+        } catch (e) {}
+        throw new Error(errorMsg);
+      }
 
       while (true) {
         const { done, value } = await reader.read();
