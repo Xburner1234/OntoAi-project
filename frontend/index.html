@@ -292,10 +292,14 @@
     let fullText = '', buffer = '';
 
     try {
-      const response = await fetch('http://localhost:3000/api/chat', {
+      // ⚠️ 请确保这里替换为您真实的 Railway 后端 URL
+      const BACKEND_URL = 'https://ontoai-project-production.up.railway.app'; 
+      
+      const response = await fetch(`${BACKEND_URL}/api/chat`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMessage, conversation_id: conversationId, app_type: appType, system_prompt: currentAgentDescription })
       });
+      
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const reader = response.body.getReader(); const decoder = new TextDecoder();
 
@@ -326,7 +330,10 @@
           }
         }
       }
-    } catch (error) { bubbleEl.textContent = `⚠️ 错误: ${error.message}`; bubbleEl.style.color = '#EF4444'; }
+    } catch (error) { 
+      bubbleEl.textContent = `⚠️ 连接后端失败: ${error.message}。请检查 Railway 后端是否正常运行及 URL 是否正确。`; 
+      bubbleEl.style.color = '#EF4444'; 
+    }
   }
 
   // ================= AGENT CONFIG =================
