@@ -298,39 +298,52 @@
         body: JSON.stringify({ message: userMessage, conversation_id: conversationId, app_type: appType, system_prompt: currentAgentDescription })
       });
       
-      // 🚨 终极兜底：无论状态码是多少，先尝试读取原始文本
+      // 读取原始文本
       const rawText = await response.text(); 
       
-      // 如果是 204 No Content，rawText 会是空字符串
-      if (response.status === 204 || !rawText) {
-         bubbleEl.innerHTML = `⚠️ <strong>后端返回了 204 (空内容)。</strong><br><span style="font-size:12px;color:#64748b;">这通常是浏览器的 CORS 预检(OPTIONS)请求。请在 F12 Network 面板中寻找类型为 <strong>POST</strong> 的 chat 请求，看看它的状态码是多少。</span>`;
-         bubbleEl.style.color = '#B45309';
-         return;
-      }
-
-      // 尝试解析 JSON
-      let data;
-      try {
-        data = JSON.parse(rawText);
-      } catch (e) {
-        // 如果不是 JSON，直接显示原始文本
-        bubbleEl.innerHTML = `<strong>⚠️ 后端返回了非 JSON 数据 (状态码 ${response.status}):</strong><br><pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;background:#f1f5f9;padding:8px;border-radius:4px;margin-top:8px;">${rawText}</pre>`;
-        bubbleEl.style.color = '#B45309';
+      if (!response.ok) {
+        bubbleEl.innerHTML = `⚠️ <strong>请求失败 (${response.status}):</strong> ${rawText}`;
+        bubbleEl.style.color = '#EF4444';
         return;
       }
 
-      // 如果成功解析了 JSON，提取答案
-      if (data.answer) {
-        bubbleEl.textContent = data.answer;
-        if (data.conversation_id) currentDifyConversationId = data.conversation_id;
-      } else if (data.error || data.details) {
-        bubbleEl.innerHTML = `⚠️ <strong>Dify 报错:</strong> ${data.error || data.details}`;
-        bubbleEl.style.color = '#EF4444';
-      } else {
-        bubbleEl.innerHTML = `<strong>⚠️ 收到 JSON 但找不到 answer 字段:</strong><br><pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;background:#f1f5f9;padding:8px;border-radius:4px;margin-top:8px;">${rawText}</pre>`;
-        bubbleEl.style.color = '#B45309';
+      let answer = '';
+      
+      // 🚨 万能解析逻辑开始：
+      
+      // 1. 如果返回的是纯文本（没有 JSON 括号，也没有 data: 前缀），直接当作答案
+      if (rawText && !rawText.trim().startsWith('{') && !rawText.includes('data:')) {
+        answer = rawText; 
+      } 
+      // 2. 尝试作为标准 JSON 解析
+      else {
+        try {
+          const data = JSON.parse(rawText);
+          answer = data.answer || JSON.stringify(data);
+          if (data.conversation_id) currentDifyConversationId = data.conversation_id;
+        } catch (e) {
+          // 3. 如果解析失败，且包含 'data:'，说明是 SSE 流式数据，提取最后一个 JSON
+          if (rawText.includes('data:')) {
+            const matches = rawText.match(/data:\s*(\{.*\})/g);
+            if (matches) {
+              const lastMatch = matches[matches.length - 1].replace('data:', '').trim();
+              try {
+                const lastJson = JSON.parse(lastMatch);
+                answer = lastJson.answer || '收到流式数据但无 answer 字段';
+                if (lastJson.conversation_id) currentDifyConversationId = lastJson.conversation_id;
+              } catch (err) {
+                answer = '解析 SSE 数据失败: ' + lastMatch;
+              }
+            }
+          } else {
+            // 4. 兜底：直接显示原始内容
+            answer = rawText || '后端返回了空内容';
+          }
+        }
       }
       
+      // 将提取到的答案显示在气泡中
+      bubbleEl.textContent = answer;
       msgArea.scrollTop = msgArea.scrollHeight;
 
     } catch (error) { 
