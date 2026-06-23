@@ -289,10 +289,8 @@
     const msgContentEl = document.getElementById(loadingId).querySelector('.msg-content');
     const bubbleEl = msgContentEl.querySelector('.msg-bubble');
     bubbleEl.textContent = ''; bubbleEl.style.color = 'var(--text-main)';
-    let fullText = '', buffer = '';
 
     try {
-      // ✅ 已为您填入真实的 Railway 后端网址
       const BACKEND_URL = 'https://ontoai-project-production.up.railway.app'; 
       
       const response = await fetch(`${BACKEND_URL}/api/chat`, {
@@ -300,49 +298,43 @@
         body: JSON.stringify({ message: userMessage, conversation_id: conversationId, app_type: appType, system_prompt: currentAgentDescription })
       });
       
-      // 增强错误处理：如果状态码不是 200，尝试读取 Dify 返回的具体错误原因
-      if (!response.ok) {
-        let errorMsg = `HTTP ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.details || errorMsg;
-        } catch (e) {}
-        throw new Error(errorMsg);
+      // 🚨 终极兜底：无论状态码是多少，先尝试读取原始文本
+      const rawText = await response.text(); 
+      
+      // 如果是 204 No Content，rawText 会是空字符串
+      if (response.status === 204 || !rawText) {
+         bubbleEl.innerHTML = `⚠️ <strong>后端返回了 204 (空内容)。</strong><br><span style="font-size:12px;color:#64748b;">这通常是浏览器的 CORS 预检(OPTIONS)请求。请在 F12 Network 面板中寻找类型为 <strong>POST</strong> 的 chat 请求，看看它的状态码是多少。</span>`;
+         bubbleEl.style.color = '#B45309';
+         return;
       }
 
-      // 流式读取核心逻辑
-      const reader = response.body.getReader(); 
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const messages = buffer.split('\n\n'); buffer = messages.pop();
-        for (const msg of messages) {
-          if (!msg.trim()) continue;
-          let eventType = '', dataStr = '';
-          msg.split('\n').forEach(line => { if (line.startsWith('event:')) eventType = line.substring(6).trim(); if (line.startsWith('data:')) dataStr = line.substring(5).trim(); });
-          if (dataStr) {
-            try {
-              const json = JSON.parse(dataStr);
-              if (eventType === 'agent_thought' && appType === 'agent') {
-                let html = '';
-                if (json.thought) html += `<div class="thought-label">🧠 思考过程</div><div>${json.thought}</div>`;
-                if (json.tool) html += `<div class="tool-label">🛠️ 调用工具: ${json.tool}</div><pre>${json.tool_input || ''}</pre>`;
-                if (json.observation) html += `<div class="tool-label">👁️ 观察结果</div><pre>${json.observation}</pre>`;
-                if (html) { const box = document.createElement('div'); box.className = 'agent-thought-box'; box.innerHTML = html; msgContentEl.insertBefore(box, bubbleEl); }
-              } else if (eventType === 'message' && json.answer) {
-                fullText += json.answer; bubbleEl.textContent = fullText;
-              }
-              if (json.conversation_id) currentDifyConversationId = json.conversation_id;
-              msgArea.scrollTop = msgArea.scrollHeight;
-            } catch (e) {}
-          }
-        }
+      // 尝试解析 JSON
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (e) {
+        // 如果不是 JSON，直接显示原始文本
+        bubbleEl.innerHTML = `<strong>⚠️ 后端返回了非 JSON 数据 (状态码 ${response.status}):</strong><br><pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;background:#f1f5f9;padding:8px;border-radius:4px;margin-top:8px;">${rawText}</pre>`;
+        bubbleEl.style.color = '#B45309';
+        return;
       }
+
+      // 如果成功解析了 JSON，提取答案
+      if (data.answer) {
+        bubbleEl.textContent = data.answer;
+        if (data.conversation_id) currentDifyConversationId = data.conversation_id;
+      } else if (data.error || data.details) {
+        bubbleEl.innerHTML = `⚠️ <strong>Dify 报错:</strong> ${data.error || data.details}`;
+        bubbleEl.style.color = '#EF4444';
+      } else {
+        bubbleEl.innerHTML = `<strong>⚠️ 收到 JSON 但找不到 answer 字段:</strong><br><pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;background:#f1f5f9;padding:8px;border-radius:4px;margin-top:8px;">${rawText}</pre>`;
+        bubbleEl.style.color = '#B45309';
+      }
+      
+      msgArea.scrollTop = msgArea.scrollHeight;
+
     } catch (error) { 
-      bubbleEl.textContent = `⚠️ 连接后端失败: ${error.message}`; 
+      bubbleEl.innerHTML = `⚠️ <strong>网络请求失败:</strong> ${error.message}`; 
       bubbleEl.style.color = '#EF4444'; 
     }
   }
