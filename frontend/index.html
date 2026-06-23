@@ -339,24 +339,33 @@
             try {
               const json = JSON.parse(dataStr);
               
-              // 1. 捕获普通对话 (Chatbot) 和 智能体对话 (Agent) 的文本流
-              if ((eventType === 'message' || eventType === 'agent_message') && json.answer) {
+              // 🚨 调试模式：打印所有事件到控制台 (按 F12 查看)
+              console.log(`[Dify 事件] ${eventType}:`, json);
+
+              // 1. 提取标准答案 (Chatbot 和 Agent 的最终回复)
+              if (json.answer) {
                 fullText += json.answer; 
                 bubbleEl.textContent = fullText;
               } 
-              // 2. 捕获 Agent 的思考过程 (可选显示)
-              else if (eventType === 'agent_thought' && json.thought) {
-                // 如果您想在界面上看到 AI 的思考过程，可以取消下面这行的注释
-                // console.log('🧠 AI 思考:', json.thought); 
+              // 2. 提取 Agent 的思考过程 (如果有的话)
+              else if (json.thought) {
+                fullText += `🧠 [思考中]: ${json.thought}\n\n`;
+                bubbleEl.textContent = fullText;
+              }
+              // 3. 提取工具调用结果
+              else if (json.observation) {
+                fullText += `🛠️ [工具结果]: ${json.observation}\n\n`;
+                bubbleEl.textContent = fullText;
               }
               
-              // 更新 conversation_id
+              // 4. 如果一直没拿到文本，把当前事件类型显示在界面上帮我们排查
+              if (!fullText && eventType !== 'ping') {
+                 bubbleEl.innerHTML = `<strong>🔍 调试中:</strong> 收到事件 <code>${eventType}</code><br><pre style="font-size:11px;white-space:pre-wrap;color:#64748b;">${JSON.stringify(json).substring(0, 150)}...</pre>`;
+              }
+
               if (json.conversation_id) currentDifyConversationId = json.conversation_id;
-              
               msgArea.scrollTop = msgArea.scrollHeight;
-            } catch (e) {
-              // 忽略非 JSON 的行（如 SSE 注释 `: heartbeat`）
-            }
+            } catch (e) {}
           }
         }
       }
